@@ -10,7 +10,14 @@ enum class NetworkState {
     CONNECTED, WILL_DISCONNECT, DISCONNECTED, UNAVAILABLE
 }
 
-class NetworkStateManager(applicationContext: Context, lifecycleOwner: LifecycleOwner, vararg networkObservers: Array<Observer<NetworkState>>) : DefaultLifecycleObserver, NetworkCallback() {
+class NetworkStateManager(
+    applicationContext: Context, private val lifecycleOwner: LifecycleOwner,
+    vararg networkObservers: Array<Observer<NetworkState>>
+) : DefaultLifecycleObserver, NetworkCallback() {
+
+    init {
+        lifecycleOwner.lifecycle.addObserver(this)
+    }
 
     private val conManager =
         applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -40,18 +47,21 @@ class NetworkStateManager(applicationContext: Context, lifecycleOwner: Lifecycle
 
     override fun onAvailable(network: Network) {
         super.onAvailable(network)
+        networkStateLiveData.value = NetworkState.CONNECTED
     }
 
     override fun onLosing(network: Network, maxMsToLive: Int) {
         super.onLosing(network, maxMsToLive)
+        networkStateLiveData.value = NetworkState.WILL_DISCONNECT
     }
 
     override fun onLost(network: Network) {
         super.onLost(network)
+        networkStateLiveData.value = NetworkState.DISCONNECTED
     }
 
     override fun onUnavailable() {
         super.onUnavailable()
-
+        networkStateLiveData.value = NetworkState.UNAVAILABLE
     }
 }
