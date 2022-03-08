@@ -8,6 +8,7 @@
     <uses-permission-sdk-23 android:name="com.urbandroid.sleep.READ" />
 
     <application
+        android:name=".SleepAsHAApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

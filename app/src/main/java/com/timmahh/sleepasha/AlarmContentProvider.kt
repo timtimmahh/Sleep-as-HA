@@ -1,12 +1,17 @@
 package com.timmahh.sleepasha
 
-import android.app.Activity
+import android.app.Application
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Bundle
 import android.os.Parcel
 import android.os.Parcelable
 import android.provider.BaseColumns
+import androidx.lifecycle.MutableLiveData
+import androidx.loader.app.LoaderManager
 import androidx.loader.content.CursorLoader
+import androidx.loader.content.Loader
 import kotlinx.serialization.Serializable
 
 object SleepRecord {
@@ -49,15 +54,18 @@ object Alarm {
     }
 }
 
-fun Alarm.Columns.getColumnIndex(cursor: Cursor) = cursor.getColumnIndex(name).takeUnless { it < 0 } ?: ordinal
-fun Alarm.Columns.getColumnType(cursor: Cursor) = name to when (cursor.getType(getColumnIndex(cursor))) {
-    Cursor.FIELD_TYPE_NULL -> null
-    Cursor.FIELD_TYPE_BLOB -> "blob"
-    Cursor.FIELD_TYPE_INTEGER -> "int"
-    Cursor.FIELD_TYPE_FLOAT -> "float"
-    Cursor.FIELD_TYPE_STRING -> "string"
-    else -> "unknown"
-}
+fun Alarm.Columns.getColumnIndex(cursor: Cursor) =
+    cursor.getColumnIndex(name).takeUnless { it < 0 } ?: ordinal
+
+fun Alarm.Columns.getColumnType(cursor: Cursor) =
+    name to when (cursor.getType(getColumnIndex(cursor))) {
+        Cursor.FIELD_TYPE_NULL -> null
+        Cursor.FIELD_TYPE_BLOB -> "blob"
+        Cursor.FIELD_TYPE_INTEGER -> "int"
+        Cursor.FIELD_TYPE_FLOAT -> "float"
+        Cursor.FIELD_TYPE_STRING -> "string"
+        else -> "unknown"
+    }
 
 @Serializable
 data class AlarmModel(
@@ -86,16 +94,16 @@ data class AlarmModel(
     )
 
     constructor(cursor: Cursor) : this(
-        hour=cursor.getInt(Alarm.Columns.hour.getColumnIndex(cursor)),
-        minutes=cursor.getInt(Alarm.Columns.minutes.getColumnIndex(cursor)),
-        daysOfWeek=cursor.getInt(Alarm.Columns.daysofweek.getColumnIndex(cursor)),
-        alarmTime=cursor.getInt(Alarm.Columns.alarmtime.getColumnIndex(cursor)),
-        enabled=cursor.getInt(Alarm.Columns.enabled.getColumnIndex(cursor)),
-        vibrate=cursor.getInt(Alarm.Columns.vibrate.getColumnIndex(cursor)),
-        message=cursor.getString(Alarm.Columns.message.getColumnIndex(cursor)),
-        alert=cursor.getString(Alarm.Columns.alert.getColumnIndex(cursor)),
-        suspendTime=cursor.getInt(Alarm.Columns.suspendtime.getColumnIndex(cursor)),
-        nonDeepSleepWakeupWindow=cursor.getInt(Alarm.Columns.ndswakeupwindow.getColumnIndex(cursor))
+        hour = cursor.getInt(Alarm.Columns.hour.getColumnIndex(cursor)),
+        minutes = cursor.getInt(Alarm.Columns.minutes.getColumnIndex(cursor)),
+        daysOfWeek = cursor.getInt(Alarm.Columns.daysofweek.getColumnIndex(cursor)),
+        alarmTime = cursor.getInt(Alarm.Columns.alarmtime.getColumnIndex(cursor)),
+        enabled = cursor.getInt(Alarm.Columns.enabled.getColumnIndex(cursor)),
+        vibrate = cursor.getInt(Alarm.Columns.vibrate.getColumnIndex(cursor)),
+        message = cursor.getString(Alarm.Columns.message.getColumnIndex(cursor)),
+        alert = cursor.getString(Alarm.Columns.alert.getColumnIndex(cursor)),
+        suspendTime = cursor.getInt(Alarm.Columns.suspendtime.getColumnIndex(cursor)),
+        nonDeepSleepWakeupWindow = cursor.getInt(Alarm.Columns.ndswakeupwindow.getColumnIndex(cursor))
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -237,8 +245,50 @@ data class OrderEntry(
     override fun toString(): String = "${column.name} ${direction.name}"
 }
 
-fun Activity.loadAlarmsFromProvider(
-    projections: Set<Alarm.Columns> = setOf(
+
+//@Single
+//@Named("AlarmContentProvider")
+class AlarmContentProvider(application: Application) : LoaderManager.LoaderCallbacks<Cursor> {
+
+    private val cursorLoader by lazy { application.cursorBuilder {} }
+    val alarms: MutableLiveData<List<AlarmModel>> = MutableLiveData(emptyList())
+
+    override fun onCreateLoader(
+        id: Int,
+        args: Bundle?
+    ): Loader<Cursor> = cursorLoader
+
+    override fun onLoadFinished(
+        loader: Loader<Cursor>,
+        data: Cursor?
+    ) {
+        var counter = 0
+        val loadedAlarms = mutableListOf<AlarmModel>()
+        if (data?.moveToFirst() == true) {
+            do {
+                print("Index=$counter")
+                loadedAlarms.add(AlarmModel(data))
+                print("Finished index=$counter")
+                counter++
+            } while (data.moveToNext())
+        }
+        alarms.value = loadedAlarms
+    }
+
+    override fun onLoaderReset(loader: Loader<Cursor>) {
+        alarms.value = emptyList()
+    }
+}
+
+fun Context.cursorBuilder(block: CursorBuilder.() -> Unit) = CursorBuilder(this, block).build()
+
+class CursorBuilder(private val context: Context, block: CursorBuilder.() -> Unit) {
+
+    init {
+        apply(block)
+    }
+
+    internal var projections: Set<Alarm.Columns> = setOf(
         Alarm.Columns.hour,
         Alarm.Columns.minutes,
         Alarm.Columns.daysofweek,
@@ -249,14 +299,16 @@ fun Activity.loadAlarmsFromProvider(
         Alarm.Columns.alert,
         Alarm.Columns.suspendtime,
         Alarm.Columns.ndswakeupwindow
-    ),
-    selections: Pair<String?, Array<String>> = null to emptyArray(),
-    orderBy: Array<OrderEntry> = Alarm.DEFAULT_SORT_ORDER
-) = CursorLoader(
-        this,
+    )
+    internal var selections: Pair<String?, Array<String>> = null to emptyArray()
+    internal var orderBy: Array<OrderEntry> = Alarm.DEFAULT_SORT_ORDER
+
+    fun build() = CursorLoader(
+        context,
         Alarm.CONTENT_URI,
         projections.map(Alarm.Columns::name).toTypedArray(),
         selections.first,
         selections.second,
         orderBy.joinToString(", ", transform = OrderEntry::toString)
     )
+}
