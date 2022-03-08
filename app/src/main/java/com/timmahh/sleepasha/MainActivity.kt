@@ -69,11 +69,15 @@ class MainActivity : ComponentActivity() {
                                     sharedPref.getString(MQTT_PREF_TOPIC, null)
                                 )
                             }
-                            sharedPref.registerOnSharedPreferenceChangeListener { sharedPreferences, key ->
-                                sharedPreferences.getString(key, null)?.let {
-                                    setBackupPref(it)
+                            val preferenceChangeListener = SharedPreferences
+                                .OnSharedPreferenceChangeListener { sharedPreferences, key ->
+                                    if (key == MQTT_PREF_TOPIC) {
+                                        sharedPreferences.getString(key, null)?.let {
+                                            setBackupPref(it)
+                                        }
+                                    }
                                 }
-                            }
+                            sharedPref.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
                             if (backupPref == null) SetupView(
                                 sharedPref,
                                 prefTopic,

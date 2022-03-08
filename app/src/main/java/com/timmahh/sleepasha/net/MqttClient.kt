@@ -1,22 +1,20 @@
 package com.timmahh.sleepasha.net
 
-import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.hivemq.client.mqtt.MqttClientState
 import com.hivemq.client.mqtt.datatypes.MqttClientIdentifier
 import com.hivemq.client.mqtt.mqtt5.message.disconnect.Mqtt5Disconnect
 import com.hivemq.client.mqtt.mqtt5.message.disconnect.Mqtt5DisconnectBuilder
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 class MqttManager(
-    lifecycleOwner: LifecycleOwner = ProcessLifecycleOwner.get(),
+//    lifecycleOwner: LifecycleOwner = ProcessLifecycleOwner.get(),
     builder: MqttClientDsl.() -> Unit
-) : DefaultLifecycleObserver {
+)/* : DefaultLifecycleObserver*/ {
     private val client by lazy {
         mqttClient {
             automaticReconnect {
@@ -25,7 +23,7 @@ class MqttManager(
             }
             onConnected { currentState.value = it }
             onDisconnect { currentState.value = it }
-            builder()
+            apply(builder)
         }
     }
     val identifier: Optional<MqttClientIdentifier>
@@ -34,14 +32,14 @@ class MqttManager(
     val state: MqttClientState
         get() = client.state
 
-    init {
+    /*init {
         lifecycleOwner.lifecycle.addObserver(this)
-    }
+    }*/
 
     private val stateChanges = mutableListOf<(MqttClientState) -> Unit>()
 
     private val currentState = MutableLiveData(MqttClientState.DISCONNECTED).apply {
-        observe(lifecycleOwner) {
+        observeForever {
             stateChanges.forEach { stateChange -> stateChange(it) }
         }
     }
@@ -57,34 +55,19 @@ class MqttManager(
     }
 
     suspend fun connect(builder: (MqttConnectDsl.() -> Unit)? = null) =
-        coroutineScope {
-            async {
-                builder?.let { client.connect(mqttConnect(it)) }
-                    ?: client.connect()
-            }.await()
+        withContext(Dispatchers.Default) {
+            builder?.let { client.connect(mqttConnect(it)) }
+                ?: client.connect()
         }
 
     suspend fun disconnect(builder: (Mqtt5DisconnectBuilder.() -> Unit)? = null) =
-        coroutineScope {
-            async {
-                builder?.let { client.disconnect(Mqtt5Disconnect.builder().apply(it).build()) }
-                    ?: client.disconnect()
-            }
+        withContext(Dispatchers.Default) {
+            builder?.let { client.disconnect(Mqtt5Disconnect.builder().apply(it).build()) }
+                ?: client.disconnect()
         }
 
     suspend fun publish(builder: MqttPublishDsl.() -> Unit) =
-        coroutineScope {
-            async {
-                client.publish(mqttPublish(builder))
-            }.await()
+        withContext(Dispatchers.Default) {
+            client.publish(mqttPublish(builder))
         }
-
-    override fun onResume(owner: LifecycleOwner) {
-        super.onResume(owner)
-
-    }
-
-    override fun onPause(owner: LifecycleOwner) {
-        super.onPause(owner)
-    }
 }

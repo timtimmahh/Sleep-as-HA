@@ -1,7 +1,6 @@
 package com.timmahh.sleepasha.di
 
 import android.app.Application
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.timmahh.sleepasha.AlarmContentProvider
 import com.timmahh.sleepasha.net.MqttManager
 import org.koin.core.annotation.ComponentScan
@@ -15,7 +14,7 @@ class AppModule {
     fun alarmContentProvider(application: Application) = AlarmContentProvider(application)
 
     @Single
-    fun mqttManager() = MqttManager(ProcessLifecycleOwner.get()) {
+    fun mqttManager() = MqttManager {
         serverHost = "condo-homeassistant.duckdns.org"
         serverPort = 8883
         sslConfig { }
