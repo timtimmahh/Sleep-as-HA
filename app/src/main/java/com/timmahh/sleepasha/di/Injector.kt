@@ -11,12 +11,14 @@ import org.koin.core.annotation.Single
 @ComponentScan("com.timmahh.sleepasha")
 class AppModule {
     @Single
-    fun alarmContentProvider(application: Application) = AlarmContentProvider(application)
+    fun alarmContentProvider(application: Application) = AlarmContentProvider(application.contentResolver)
 
     @Single
-    fun mqttManager() = MqttManager {
+    fun mqttManager(application: Application) = MqttManager {
         serverHost = "condo-homeassistant.duckdns.org"
         serverPort = 8883
         sslConfig { }
+    }.also {
+
     }
 }

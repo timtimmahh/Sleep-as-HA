@@ -1,16 +1,16 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.timmahh.sleepasha
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.OutlinedTextField
@@ -33,8 +33,11 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import com.hivemq.client.mqtt.MqttClientState
+import com.timmahh.sleepasha.net.MqttEvent
 import com.timmahh.sleepasha.ui.AlarmViewModel
 import com.timmahh.sleepasha.ui.theme.SleepAsHATheme
+import com.timmahh.sleepasha.util.ACTION_START_MQTT_SERVICE
 import com.timmahh.sleepasha.util.MQTT_PREFERENCES
 import com.timmahh.sleepasha.util.MQTT_PREF_TOPIC
 import org.koin.androidx.compose.get
@@ -83,7 +86,10 @@ class MainActivity : ComponentActivity() {
                                 prefTopic,
                                 setPrefTopic
                             )
-                            else AlarmRoot(this@MainActivity)
+                            else {
+//                                mqttServiceCommand(ACTION_START_MQTT_SERVICE)
+                                AlarmRoot(this)
+                            }
                         }
                         is PermissionStatus.Denied -> {
                             Column {
@@ -106,7 +112,9 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun SetupView(sharedPrefs: SharedPreferences, text: String, setText: (String) -> Unit) {
         Column(
-            modifier = Modifier.padding(16.dp).fillMaxSize(),
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             OutlinedTextField(text, setText, label = {
@@ -124,6 +132,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /*private fun mqttServiceCommand(action: String) = startService(Intent(this, MqttService::class
+        .java).apply {
+        this.action = action
+    })*/
 
 /*
     @Preview(showBackground = true)
@@ -144,24 +157,39 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun <T> AlarmRoot(
-    owner: T,
-    alarmContentProvider: AlarmContentProvider = get()
-) where T : LifecycleOwner, T : ViewModelStoreOwner {
-
+fun AlarmRoot(owner: LifecycleOwner) {
     val alarmViewModel = getViewModel<AlarmViewModel>()
+    alarmViewModel.linkLifecycle(owner)
 //        val alarms = remember { mutableStateListOf<AlarmModel>() }
-    val alarms: List<AlarmModel> by alarmViewModel.alarmsLiveData.observeAsState(listOf())
-    owner.lifecycleScope.launchWhenCreated {
-        LoaderManager.getInstance(owner).initLoader<Cursor>(
-            0, null, alarmContentProvider
-        )
+    val mqttState by alarmViewModel.mqttStateLiveData.observeAsState()
+
+    val mqttStatus = when (mqttState) {
+        MqttClientState.CONNECTED -> "connected"
+        MqttClientState.DISCONNECTED -> "disconnected"
+        MqttClientState.CONNECTING -> "connecting"
+        MqttClientState.CONNECTING_RECONNECT -> "connecting_reconnect"
+        MqttClientState.DISCONNECTED_RECONNECT -> "disconnected_reconnect"
+        else -> "undefined"
     }
-    AlarmList(alarms)
+    Scaffold(topBar = {
+        SmallTopAppBar(title = {
+            Text("MQTT Status: $mqttStatus")
+        })
+    }) {
+        if (mqttState?.isConnected == true)
+            AlarmList(alarmViewModel)
+        else {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            alarmViewModel.mqttConnect()
+        }
+    }
 }
 
 @Composable
-fun AlarmList(alarms: List<AlarmModel> = emptyList()) {
+fun AlarmList(alarmViewModel: AlarmViewModel = getViewModel()) {
+    val alarms: List<AlarmModel> by alarmViewModel.alarmsLiveData.observeAsState(listOf())
     LazyColumn {
         items(alarms, key = { alarm -> alarm }) { alarm ->
             AlarmItem(alarm)

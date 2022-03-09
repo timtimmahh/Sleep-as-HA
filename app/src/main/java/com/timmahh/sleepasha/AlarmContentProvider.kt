@@ -1,6 +1,7 @@
 package com.timmahh.sleepasha
 
 import android.app.Application
+import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
@@ -137,10 +138,7 @@ data class AlarmModel(
 class SelectionBuilder {
 
     inner class Selection internal constructor(
-        val column: String,
-        val op: String,
-        val arg: Any,
-        val combiner: String
+        val column: String, val op: String, val arg: Any, val combiner: String
     ) {
         override fun toString(): String {
             return "$combiner $column $op $arg"
@@ -150,11 +148,7 @@ class SelectionBuilder {
     private val selections = mutableListOf<Selection>()
 
     private fun addSelection(
-        column: Alarm.Columns,
-        op: String,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean
+        column: Alarm.Columns, op: String, value: Any, combiner: String? = null, negate: Boolean
     ) {
         selections += Selection(
             column.name,
@@ -165,66 +159,39 @@ class SelectionBuilder {
     }
 
     protected fun eq(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "=", value, combiner, negate)
 
     protected fun gt(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, ">", value, combiner, negate)
 
     protected fun lt(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "<", value, combiner, negate)
 
     protected fun gte(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, ">=", value, combiner, negate)
 
     protected fun lte(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "<=", value, combiner, negate)
 
     protected fun neq(
-        column: Alarm.Columns,
-        value: Any,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Any, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "<>", value, combiner, negate)
 
     protected fun between(
-        column: Alarm.Columns,
-        value: Pair<*, *>,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Pair<*, *>, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "BETWEEN", value, combiner, negate)
 
     protected fun like(
-        column: Alarm.Columns,
-        value: String,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: String, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "LIKE", value, combiner, negate)
 
     protected fun contains(
-        column: Alarm.Columns,
-        value: Array<*>,
-        combiner: String? = null,
-        negate: Boolean = false
+        column: Alarm.Columns, value: Array<*>, combiner: String? = null, negate: Boolean = false
     ) = addSelection(column, "IN", value, combiner, negate)
 
     fun build(): Pair<String, Array<String>> =
@@ -239,8 +206,7 @@ enum class OrderDirection {
 }
 
 data class OrderEntry(
-    val column: Alarm.Columns,
-    val direction: OrderDirection = OrderDirection.ASC
+    val column: Alarm.Columns, val direction: OrderDirection = OrderDirection.ASC
 ) {
     override fun toString(): String = "${column.name} ${direction.name}"
 }
@@ -248,19 +214,33 @@ data class OrderEntry(
 
 //@Single
 //@Named("AlarmContentProvider")
-class AlarmContentProvider(application: Application) : LoaderManager.LoaderCallbacks<Cursor> {
+class AlarmContentProvider(private val contentResolver: ContentResolver) {
 
-    private val cursorLoader by lazy { application.cursorBuilder {} }
     val alarms: MutableLiveData<List<AlarmModel>> = MutableLiveData(emptyList())
 
+    fun fetchAllAlarms(block: CursorBuilder.() -> Unit): List<AlarmModel> {
+        val cursor = contentResolver.cursorBuilder(block)
+        var counter = 0
+        return cursor?.use {
+            val loadedAlarms = mutableListOf<AlarmModel>()
+            if (it.moveToFirst()) {
+                do {
+                    print("Index=$counter")
+                    loadedAlarms.add(AlarmModel(it))
+                    print("Finished index=$counter")
+                    counter++
+                } while (it.moveToNext())
+            }
+            loadedAlarms.toList()
+        } ?: emptyList()
+    }
+/*
     override fun onCreateLoader(
-        id: Int,
-        args: Bundle?
+        id: Int, args: Bundle?
     ): Loader<Cursor> = cursorLoader
 
     override fun onLoadFinished(
-        loader: Loader<Cursor>,
-        data: Cursor?
+        loader: Loader<Cursor>, data: Cursor?
     ) {
         var counter = 0
         val loadedAlarms = mutableListOf<AlarmModel>()
@@ -277,12 +257,15 @@ class AlarmContentProvider(application: Application) : LoaderManager.LoaderCallb
 
     override fun onLoaderReset(loader: Loader<Cursor>) {
         alarms.value = emptyList()
-    }
+    }*/
 }
 
-fun Context.cursorBuilder(block: CursorBuilder.() -> Unit) = CursorBuilder(this, block).build()
+fun ContentResolver.cursorBuilder(block: CursorBuilder.() -> Unit) = CursorBuilder(this, block).build()
 
-class CursorBuilder(private val context: Context, block: CursorBuilder.() -> Unit) {
+class CursorBuilder(
+    private val contentResolver: ContentResolver,
+    block: CursorBuilder.() -> Unit
+) {
 
     init {
         apply(block)
@@ -303,12 +286,19 @@ class CursorBuilder(private val context: Context, block: CursorBuilder.() -> Uni
     internal var selections: Pair<String?, Array<String>> = null to emptyArray()
     internal var orderBy: Array<OrderEntry> = Alarm.DEFAULT_SORT_ORDER
 
-    fun build() = CursorLoader(
+    fun build() = contentResolver.query(
+        Alarm.CONTENT_URI, projections.map(Alarm.Columns::name)
+            .toTypedArray(), selections.first, selections.second, orderBy.joinToString(
+            ", ",
+            transform = OrderEntry::toString
+        )
+    )
+/*CursorLoader(
         context,
         Alarm.CONTENT_URI,
         projections.map(Alarm.Columns::name).toTypedArray(),
         selections.first,
         selections.second,
         orderBy.joinToString(", ", transform = OrderEntry::toString)
-    )
+    )*/
 }
